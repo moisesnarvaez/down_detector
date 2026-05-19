@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Down Detector</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; cursor: pointer; flex-shrink: 0; }
+    .dot-success { background-color: #22c55e; }
+    .dot-error { background-color: #ef4444; }
+    details summary { cursor: pointer; list-style: none; }
+    details summary::-webkit-details-marker { display: none; }
+  </style>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen">
+
+  <!-- Sticky Header -->
+  <header class="sticky top-0 z-10 bg-gray-900 border-b border-gray-800 shadow-lg">
+    <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <span class="text-xl font-bold tracking-tight">Down Detector</span>
+        <span id="overall-badge" class="text-xs font-semibold px-2 py-0.5 rounded-full bg-gray-700 text-gray-300">Loading...</span>
+      </div>
+      <div class="flex items-center gap-2 text-sm text-gray-400">
+        <span class="mr-2"><span id="service-count">0</span> services &bull; <span id="last-updated">—</span></span>
+        <button onclick="openModal()" class="px-3 py-1 rounded bg-blue-700 hover:bg-blue-600 text-white text-xs font-medium transition-colors">
+          + Add Service
+        </button>
+        <button id="notif-btn" onclick="toggleNotifications()" class="px-3 py-1 rounded text-xs font-medium transition-colors bg-green-700 hover:bg-green-600 text-white">
+          Alerts ON
+        </button>
+        <button id="clear-btn" onclick="clearHistory()" class="px-3 py-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white transition-colors text-xs font-medium">
+          Clear History
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-6xl mx-auto px-4 py-6 space-y-6">
+    <div id="cards-container" class="space-y-4"></div>
+  </main>
+
+  <!-- Add / Edit Modal -->
+  <div id="modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+    <div class="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-full max-w-lg mx-4 p-6">
+      <h2 id="modal-title" class="text-lg font-semibold mb-4">Add Service</h2>
+      <form id="service-form" class="space-y-3" onsubmit="submitService(event)">
+        <input type="hidden" id="field-id" />
+
+        <div>
+          <label class="block text-xs text-gray-400 mb-1">Name <span class="text-red-400">*</span></label>
+          <input id="field-name" type="text" required placeholder="My API"
+            class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500" />
+        </div>
+
+        <div>
+          <label class="block text-xs text-gray-400 mb-1">URL <span class="text-red-400">*</span></label>
+          <input id="field-url" type="url" required placeholder="https://api.example.com/health"
+            class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500" />
+        </div>
+
+        <div class="flex gap-3">
+          <div class="flex-1">
+            <label class="block text-xs text-gray-400 mb-1">Method</label>
+            <select id="field-method"
+              class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500">
+              <option>GET</option><option>POST</option><option>PUT</option>
+              <option>PATCH</option><option>DELETE</option>
+            </select>
+          </div>
+          <div class="flex-1">
+            <label class="block text-xs text-gray-400 mb-1">Interval (seconds)</label>
+            <input id="field-interval" type="number" min="5" value="30"
+              class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500" />
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs text-gray-400 mb-1">Headers <span class="text-gray-600">(JSON)</span></label>
+          <textarea id="field-headers" rows="2" placeholder='{"Authorization": "Bearer token"}'
+            class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm font-mono focus:outline-none focus:border-blue-500"></textarea>
+        </div>
+
+        <div>
+          <label class="block text-xs text-gray-400 mb-1">Query Params <span class="text-gray-600">(JSON)</span></label>
+          <textarea id="field-params" rows="2" placeholder='{"limit": "10"}'
+            class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm font-mono focus:outline-none focus:border-blue-500"></textarea>
+        </div>
+
+        <p id="form-error" class="text-red-400 text-xs hidden"></p>
+
+        <div class="flex justify-between pt-2">
+          <button type="button" id="delete-btn" onclick="deleteService()" class="hidden px-4 py-2 rounded bg-red-800 hover:bg-red-700 text-white text-sm font-medium transition-colors">
+            Delete
+          </button>
+          <div class="flex gap-2 ml-auto">
+            <button type="button" onclick="closeModal()" class="px-4 py-2 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm transition-colors">
+              Cancel
+            </button>
+            <button type="submit" class="px-4 py-2 rounded bg-blue-700 hover:bg-blue-600 text-white text-sm font-medium transition-colors">
+              Save
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    const MAX_RESULTS = 100;
+
+    // serviceId (String(service.id)) -> { results[] }
+    const state = {};
+
+    // serviceId -> { id, name, url, method, intervalSeconds, headers, params }
+    const serviceUrls = {};
+
+    // Ordered list of service IDs as they first appear
+    const serviceOrder = [];
+
+    function formatDuration(ms) {
+      if (ms < 1000) return `${Math.round(ms)}ms`;
+      return `${(ms / 1000).toFixed(2)}s`;
+    }
+
+    function timeAgo(isoString) {
+      const diff = Date.now() - new Date(isoString).getTime();
+      if (diff < 60000) return `${Math.round(diff / 1000)}s ago`;
+      if (diff < 3600000) return `${Math.round(diff / 60000)}m ago`;
+      return `${Math.round(diff / 3600000)}h ago`;
+    }
+
+    // ── Audio ─────────────────────────────────────────────────────────────────
+
+    let audioCtx = null;
+
+    function getAudioContext() {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      return audioCtx;
+    }
+
+    function unlockAudio() {
+      const ctx = getAudioContext();
+      if (ctx.state === 'suspended') ctx.resume();
+    }
+    document.addEventListener('click', unlockAudio, { once: true });
+    document.addEventListener('keydown', unlockAudio, { once: true });
+
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+    });
+
+    let alertsEnabled = true;
+
+    function toggleNotifications() {
+      alertsEnabled = !alertsEnabled;
+      const btn = document.getElementById('notif-btn');
+      btn.textContent = alertsEnabled ? 'Alerts ON' : 'Alerts OFF';
+      btn.className = `px-3 py-1 rounded text-xs font-medium transition-colors ${alertsEnabled ? 'bg-green-700 hover:bg-green-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-400'}`;
+    }
+
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+
+    function sendNotification(serviceId) {
+      if (!('Notification' in window) || Notification.permission !== 'granted') return;
+      const meta = serviceUrls[serviceId];
+      const name = meta?.name ?? serviceId;
+      new Notification('Service Down', {
+        body: `${name} is not responding`,
+        icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="%23ef4444"/><text x="16" y="22" font-size="20" text-anchor="middle" fill="white">!</text></svg>',
+      });
+    }
+
+    async function playAlert(serviceId) {
+      sendNotification(serviceId);
+      if (document.hidden) return;
+      try {
+        const ctx = getAudioContext();
+        if (ctx.state === 'suspended') await ctx.resume();
+        const t = ctx.currentTime;
+        const partials = [
+          { ratio: 1.000, gain: 0.6,  decay: 3.0 },
+          { ratio: 2.756, gain: 0.3,  decay: 2.0 },
+          { ratio: 5.404, gain: 0.15, decay: 1.2 },
+          { ratio: 8.933, gain: 0.08, decay: 0.8 },
+        ];
+        for (const p of partials) {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(520 * p.ratio, t);
+          gain.gain.setValueAtTime(p.gain, t);
+          gain.gain.exponentialRampToValueAtTime(0.0001, t + p.decay);
+          osc.start(t);
+          osc.stop(t + p.decay);
+        }
+      } catch (e) { /* Web Audio not available */ }
+    }
+
+    // ── Render ────────────────────────────────────────────────────────────────
+
+    function updateOverallBadge() {
+      const badge = document.getElementById('overall-badge');
+      document.getElementById('service-count').textContent = serviceOrder.length;
+
+      let allHealthy = true;
+      let anyData = false;
+      for (const id of serviceOrder) {
+        const results = state[id]?.results ?? [];
+        if (results.length > 0) {
+          anyData = true;
+          if (!results[0].success) allHealthy = false;
+        }
+      }
+
+      if (!anyData) {
+        badge.textContent = 'Loading...';
+        badge.className = 'text-xs font-semibold px-2 py-0.5 rounded-full bg-gray-700 text-gray-300';
+      } else if (allHealthy) {
+        badge.textContent = 'All Systems Go';
+        badge.className = 'text-xs font-semibold px-2 py-0.5 rounded-full bg-green-800 text-green-200';
+      } else {
+        badge.textContent = 'Degraded';
+        badge.className = 'text-xs font-semibold px-2 py-0.5 rounded-full bg-red-800 text-red-200';
+      }
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+    }
+
+    function renderCard(serviceId) {
+      const { results } = state[serviceId];
+      const latest = results[0];
+      const isUp = latest ? latest.success : null;
+      const statusColor = isUp === null ? 'bg-gray-700' : isUp ? 'bg-green-900 border-green-700' : 'bg-red-900 border-red-700';
+      const statusText = isUp === null ? 'Unknown' : isUp ? 'UP' : 'DOWN';
+      const statusBadge = isUp === null ? 'bg-gray-600 text-gray-300' : isUp ? 'bg-green-600 text-white' : 'bg-red-600 text-white';
+
+      const meta = serviceUrls[serviceId];
+      const displayName = meta?.name ?? serviceId;
+      const displayUrl = meta?.url ?? '—';
+
+      const dotsHtml = results.slice(0, 100).map((r) => {
+        const cls = r.success ? 'dot-success' : 'dot-error';
+        const title = `${timeAgo(r.timestamp)} — ${r.success ? 'OK' : 'FAIL'} (${formatDuration(r.durationMs)})`;
+        return `<span class="dot ${cls}" title="${title}"></span>`;
+      }).join('');
+
+      const latestDetail = latest ? `
+        <div class="mt-3 text-sm text-gray-400">
+          Last checked: ${timeAgo(latest.timestamp)} &bull;
+          Duration: ${formatDuration(latest.durationMs)}
+          ${latest.error ? `&bull; <span class="text-red-400">${escapeHtml(latest.error)}</span>` : ''}
+        </div>
+      ` : '';
+
+      const detailsHtml = results.slice(0, 10).map((r) => `
+        <details class="border-t border-gray-700">
+          <summary class="flex items-center gap-3 px-3 py-2 hover:bg-gray-700 transition-colors">
+            <span class="dot ${r.success ? 'dot-success' : 'dot-error'}"></span>
+            <span class="text-xs text-gray-400 w-20 shrink-0">${timeAgo(r.timestamp)}</span>
+            <span class="text-xs ${r.success ? 'text-green-400' : 'text-red-400'} font-medium w-10 shrink-0">
+              ${r.statusCode ?? (r.error ? 'ERR' : '?')}
+            </span>
+            <span class="text-xs text-gray-500 truncate">${formatDuration(r.durationMs)}</span>
+            <span class="ml-auto text-xs text-gray-600">&#9660;</span>
+          </summary>
+          <div class="px-3 py-2 bg-gray-900 text-xs font-mono overflow-auto max-h-32">
+            ${r.error ? `<div class="text-red-400">${escapeHtml(r.error)}</div>` : ''}
+            ${r.responseBody ? `<pre class="text-gray-300 whitespace-pre-wrap">${escapeHtml(r.responseBody.slice(0, 500))}</pre>` : '<div class="text-gray-500">No body captured</div>'}
+          </div>
+        </details>
+      `).join('');
+
+      return `
+        <div class="rounded-xl border ${statusColor} border-opacity-50 overflow-hidden shadow-md">
+          <div class="px-5 py-4 flex items-center justify-between gap-4">
+            <div class="min-w-0">
+              <div class="flex items-center gap-2">
+                <span class="font-semibold text-lg">${escapeHtml(displayName)}</span>
+                <span class="text-xs font-bold px-2 py-0.5 rounded ${statusBadge}">${statusText}</span>
+              </div>
+              <div class="text-sm text-gray-400 truncate mt-0.5 flex items-center gap-1.5">
+                <span class="text-xs font-mono font-semibold text-gray-500 shrink-0">${escapeHtml(meta?.method ?? 'GET')}</span>
+                <a href="${escapeHtml(displayUrl)}" target="_blank" rel="noopener noreferrer"
+                   class="hover:text-gray-200 underline underline-offset-2 decoration-gray-600 truncate">
+                  ${escapeHtml(displayUrl)}
+                </a>
+              </div>
+            </div>
+            <div class="flex items-center gap-3 shrink-0">
+              <div class="text-right text-xs text-gray-500">
+                <div>${results.length} checks</div>
+                <div>every ${meta?.intervalSeconds ?? '?'}s</div>
+              </div>
+              <button onclick="openModal(${serviceId})"
+                class="px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs transition-colors">
+                Edit
+              </button>
+            </div>
+          </div>
+
+          <div class="px-5 pb-3">
+            <div class="flex flex-wrap gap-1">
+              ${dotsHtml || '<span class="text-gray-600 text-xs">Waiting for first check...</span>'}
+            </div>
+            ${latestDetail}
+          </div>
+
+          ${detailsHtml ? `<div class="bg-gray-800 rounded-b-xl">${detailsHtml}</div>` : ''}
+        </div>
+      `;
+    }
+
+    function renderAll() {
+      const container = document.getElementById('cards-container');
+      container.innerHTML = serviceOrder.map(renderCard).join('');
+      updateOverallBadge();
+      document.getElementById('last-updated').textContent = new Date().toLocaleTimeString();
+    }
+
+    function applyResult(result) {
+      const { serviceId } = result;
+      if (!state[serviceId]) {
+        state[serviceId] = { results: [] };
+        if (!serviceOrder.includes(serviceId)) serviceOrder.push(serviceId);
+      }
+      state[serviceId].results.unshift(result);
+      if (state[serviceId].results.length > MAX_RESULTS) {
+        state[serviceId].results = state[serviceId].results.slice(0, MAX_RESULTS);
+      }
+    }
+
+    // ── Modal ─────────────────────────────────────────────────────────────────
+
+    function openModal(serviceId) {
+      const isEdit = serviceId !== undefined;
+      document.getElementById('modal-title').textContent = isEdit ? 'Edit Service' : 'Add Service';
+      document.getElementById('delete-btn').classList.toggle('hidden', !isEdit);
+      document.getElementById('form-error').classList.add('hidden');
+
+      if (isEdit) {
+        const meta = serviceUrls[String(serviceId)];
+        document.getElementById('field-id').value = serviceId;
+        document.getElementById('field-name').value = meta?.name ?? '';
+        document.getElementById('field-url').value = meta?.url ?? '';
+        document.getElementById('field-method').value = meta?.method ?? 'GET';
+        document.getElementById('field-interval').value = meta?.intervalSeconds ?? 30;
+        document.getElementById('field-headers').value =
+          meta?.headers && Object.keys(meta.headers).length ? JSON.stringify(meta.headers, null, 2) : '';
+        document.getElementById('field-params').value =
+          meta?.params && Object.keys(meta.params).length ? JSON.stringify(meta.params, null, 2) : '';
+      } else {
+        document.getElementById('service-form').reset();
+        document.getElementById('field-id').value = '';
+        document.getElementById('field-interval').value = 30;
+      }
+
+      document.getElementById('modal').classList.remove('hidden');
+    }
+
+    function closeModal() {
+      document.getElementById('modal').classList.add('hidden');
+    }
+
+    document.getElementById('modal').addEventListener('click', (e) => {
+      if (e.target === document.getElementById('modal')) closeModal();
+    });
+
+    function parseJsonField(id) {
+      const val = document.getElementById(id).value.trim();
+      if (!val) return {};
+      try { return JSON.parse(val); } catch { return null; }
+    }
+
+    async function submitService(e) {
+      e.preventDefault();
+      const errorEl = document.getElementById('form-error');
+      errorEl.classList.add('hidden');
+
+      const headers = parseJsonField('field-headers');
+      const params = parseJsonField('field-params');
+      if (headers === null || params === null) {
+        errorEl.textContent = 'Headers and Params must be valid JSON objects.';
+        errorEl.classList.remove('hidden');
+        return;
+      }
+
+      const id = document.getElementById('field-id').value;
+      const payload = {
+        name: document.getElementById('field-name').value.trim(),
+        url: document.getElementById('field-url').value.trim(),
+        method: document.getElementById('field-method').value,
+        intervalSeconds: parseInt(document.getElementById('field-interval').value, 10),
+        headers,
+        params,
+      };
+
+      const isEdit = !!id;
+      const res = await fetch(isEdit ? `/api/services/${id}` : '/api/services', {
+        method: isEdit ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Unknown error' }));
+        errorEl.textContent = err.error ?? 'Failed to save service.';
+        errorEl.classList.remove('hidden');
+        return;
+      }
+
+      const saved = await res.json();
+      const sid = String(saved.id);
+
+      serviceUrls[sid] = {
+        id: saved.id,
+        name: saved.name,
+        url: saved.request.url,
+        method: saved.request.method,
+        intervalSeconds: saved.intervalSeconds,
+        headers: saved.request.headers,
+        params: saved.request.params,
+      };
+
+      if (!state[sid]) {
+        state[sid] = { results: [] };
+        serviceOrder.push(sid);
+      }
+
+      closeModal();
+      renderAll();
+    }
+
+    async function deleteService() {
+      const id = document.getElementById('field-id').value;
+      if (!id) return;
+      const res = await fetch(`/api/services/${id}`, { method: 'DELETE' });
+      if (!res.ok) return;
+
+      const sid = String(id);
+      const idx = serviceOrder.indexOf(sid);
+      if (idx !== -1) serviceOrder.splice(idx, 1);
+      delete state[sid];
+      delete serviceUrls[sid];
+
+      closeModal();
+      renderAll();
+    }
+
+    // ── Data loading ──────────────────────────────────────────────────────────
+
+    async function loadServices() {
+      try {
+        const res = await fetch('/api/services');
+        const services = await res.json();
+        for (const svc of services) {
+          const sid = String(svc.id);
+          serviceUrls[sid] = {
+            id: svc.id,
+            name: svc.name,
+            url: svc.request.url,
+            method: svc.request.method,
+            intervalSeconds: svc.intervalSeconds,
+            headers: svc.request.headers,
+            params: svc.request.params,
+          };
+          if (!state[sid]) {
+            state[sid] = { results: [] };
+            serviceOrder.push(sid);
+          }
+        }
+      } catch (e) {
+        console.error('Failed to load services', e);
+      }
+    }
+
+    async function loadHistory() {
+      try {
+        const res = await fetch('/api/history');
+        const history = await res.json();
+        for (const [serviceId, results] of Object.entries(history)) {
+          if (!state[serviceId]) {
+            state[serviceId] = { results: [] };
+            if (!serviceOrder.includes(serviceId)) serviceOrder.push(serviceId);
+          }
+          state[serviceId].results = results.slice(0, MAX_RESULTS);
+        }
+        renderAll();
+      } catch (e) {
+        console.error('Failed to load history', e);
+      }
+    }
+
+    function connectSSE() {
+      const source = new EventSource('/events');
+      source.onmessage = (event) => {
+        try {
+          const result = JSON.parse(event.data);
+          applyResult(result);
+          if (!result.success && alertsEnabled) playAlert(result.serviceId);
+          renderAll();
+        } catch (e) {
+          console.error('SSE parse error', e);
+        }
+      };
+      source.onerror = () => console.warn('SSE connection lost, reconnecting...');
+    }
+
+    async function clearHistory() {
+      const btn = document.getElementById('clear-btn');
+      btn.textContent = 'Clearing...';
+      btn.disabled = true;
+      try {
+        await fetch('/api/history', { method: 'DELETE' });
+        for (const id of serviceOrder) state[id].results = [];
+        renderAll();
+      } catch (e) {
+        console.error('Failed to clear history', e);
+      } finally {
+        btn.textContent = 'Clear History';
+        btn.disabled = false;
+      }
+    }
+
+    // Init
+    loadServices().then(loadHistory).then(connectSSE);
+  </script>
+</body>
+</html>
