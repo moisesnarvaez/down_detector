@@ -4,7 +4,38 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Down Detector</title>
+
+  <!-- Anti-FOUC: apply theme class before any rendering -->
+  <script>
+    (function () {
+      const stored = localStorage.getItem('dd-theme');
+      const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      if ((stored === 'dark') || (!stored && prefersDark)) {
+        document.documentElement.classList.add('dark');
+      }
+    })();
+  </script>
+
   <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config = { darkMode: 'class' }</script>
+
+  <!-- Theme module: initialise + expose toggleTheme for onclick handlers -->
+  <script type="module">
+    import { getPreferredTheme, applyTheme, toggleTheme } from '/theme.js';
+    applyTheme(getPreferredTheme());
+    window.toggleTheme = () => {
+      const next = toggleTheme();
+      const btn = document.getElementById('theme-btn');
+      if (btn) btn.textContent = next === 'dark' ? '☀ Light' : '🌙 Dark';
+    };
+    // Set initial button label once DOM is ready
+    document.addEventListener('DOMContentLoaded', () => {
+      const btn = document.getElementById('theme-btn');
+      const isDark = document.documentElement.classList.contains('dark');
+      if (btn) btn.textContent = isDark ? '☀ Light' : '🌙 Dark';
+    });
+  </script>
+
   <style>
     .dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; cursor: pointer; flex-shrink: 0; }
     .dot-success { background-color: #22c55e; }
@@ -13,24 +44,27 @@
     details summary::-webkit-details-marker { display: none; }
   </style>
 </head>
-<body class="bg-gray-950 text-gray-100 min-h-screen">
+<body class="bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 min-h-screen">
 
   <!-- Sticky Header -->
-  <header class="sticky top-0 z-10 bg-gray-900 border-b border-gray-800 shadow-lg">
+  <header class="sticky top-0 z-10 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 shadow-lg">
     <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
       <div class="flex items-center gap-3">
         <span class="text-xl font-bold tracking-tight">Down Detector</span>
-        <span id="overall-badge" class="text-xs font-semibold px-2 py-0.5 rounded-full bg-gray-700 text-gray-300">Loading...</span>
+        <span id="overall-badge" class="text-xs font-semibold px-2 py-0.5 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300">Loading...</span>
       </div>
-      <div class="flex items-center gap-2 text-sm text-gray-400">
+      <div class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
         <span class="mr-2"><span id="service-count">0</span> services &bull; <span id="last-updated">—</span></span>
         <button onclick="openModal()" class="px-3 py-1 rounded bg-blue-700 hover:bg-blue-600 text-white text-xs font-medium transition-colors">
           + Add Service
         </button>
+        <button id="theme-btn" onclick="toggleTheme()" class="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 text-xs font-medium transition-colors">
+          🌙 Dark
+        </button>
         <button id="notif-btn" onclick="toggleNotifications()" class="px-3 py-1 rounded text-xs font-medium transition-colors bg-green-700 hover:bg-green-600 text-white">
           Alerts ON
         </button>
-        <button id="clear-btn" onclick="clearHistory()" class="px-3 py-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white transition-colors text-xs font-medium">
+        <button id="clear-btn" onclick="clearHistory()" class="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors text-xs font-medium">
           Clear History
         </button>
       </div>
@@ -43,59 +77,59 @@
 
   <!-- Add / Edit Modal -->
   <div id="modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-    <div class="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-full max-w-lg mx-4 p-6">
+    <div class="bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-xl shadow-2xl w-full max-w-lg mx-4 p-6">
       <h2 id="modal-title" class="text-lg font-semibold mb-4">Add Service</h2>
       <form id="service-form" class="space-y-3" onsubmit="submitService(event)">
         <input type="hidden" id="field-id" />
 
         <div>
-          <label class="block text-xs text-gray-400 mb-1">Name <span class="text-red-400">*</span></label>
+          <label class="block text-xs text-gray-600 dark:text-gray-400 mb-1">Name <span class="text-red-500">*</span></label>
           <input id="field-name" type="text" required placeholder="My API"
-            class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500" />
+            class="w-full bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500 text-gray-900 dark:text-gray-100" />
         </div>
 
         <div>
-          <label class="block text-xs text-gray-400 mb-1">URL <span class="text-red-400">*</span></label>
+          <label class="block text-xs text-gray-600 dark:text-gray-400 mb-1">URL <span class="text-red-500">*</span></label>
           <input id="field-url" type="url" required placeholder="https://api.example.com/health"
-            class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500" />
+            class="w-full bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500 text-gray-900 dark:text-gray-100" />
         </div>
 
         <div class="flex gap-3">
           <div class="flex-1">
-            <label class="block text-xs text-gray-400 mb-1">Method</label>
+            <label class="block text-xs text-gray-600 dark:text-gray-400 mb-1">Method</label>
             <select id="field-method"
-              class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500">
+              class="w-full bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500 text-gray-900 dark:text-gray-100">
               <option>GET</option><option>POST</option><option>PUT</option>
               <option>PATCH</option><option>DELETE</option>
             </select>
           </div>
           <div class="flex-1">
-            <label class="block text-xs text-gray-400 mb-1">Interval (seconds)</label>
+            <label class="block text-xs text-gray-600 dark:text-gray-400 mb-1">Interval (seconds)</label>
             <input id="field-interval" type="number" min="5" value="30"
-              class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500" />
+              class="w-full bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500 text-gray-900 dark:text-gray-100" />
           </div>
         </div>
 
         <div>
-          <label class="block text-xs text-gray-400 mb-1">Headers <span class="text-gray-600">(JSON)</span></label>
+          <label class="block text-xs text-gray-600 dark:text-gray-400 mb-1">Headers <span class="text-gray-400 dark:text-gray-600">(JSON)</span></label>
           <textarea id="field-headers" rows="2" placeholder='{"Authorization": "Bearer token"}'
-            class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm font-mono focus:outline-none focus:border-blue-500"></textarea>
+            class="w-full bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded px-3 py-2 text-sm font-mono focus:outline-none focus:border-blue-500 text-gray-900 dark:text-gray-100"></textarea>
         </div>
 
         <div>
-          <label class="block text-xs text-gray-400 mb-1">Query Params <span class="text-gray-600">(JSON)</span></label>
+          <label class="block text-xs text-gray-600 dark:text-gray-400 mb-1">Query Params <span class="text-gray-400 dark:text-gray-600">(JSON)</span></label>
           <textarea id="field-params" rows="2" placeholder='{"limit": "10"}'
-            class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm font-mono focus:outline-none focus:border-blue-500"></textarea>
+            class="w-full bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded px-3 py-2 text-sm font-mono focus:outline-none focus:border-blue-500 text-gray-900 dark:text-gray-100"></textarea>
         </div>
 
-        <p id="form-error" class="text-red-400 text-xs hidden"></p>
+        <p id="form-error" class="text-red-500 text-xs hidden"></p>
 
         <div class="flex justify-between pt-2">
-          <button type="button" id="delete-btn" onclick="deleteService()" class="hidden px-4 py-2 rounded bg-red-800 hover:bg-red-700 text-white text-sm font-medium transition-colors">
+          <button type="button" id="delete-btn" onclick="deleteService()" class="hidden px-4 py-2 rounded bg-red-700 hover:bg-red-600 text-white text-sm font-medium transition-colors">
             Delete
           </button>
           <div class="flex gap-2 ml-auto">
-            <button type="button" onclick="closeModal()" class="px-4 py-2 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm transition-colors">
+            <button type="button" onclick="closeModal()" class="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 text-sm transition-colors">
               Cancel
             </button>
             <button type="submit" class="px-4 py-2 rounded bg-blue-700 hover:bg-blue-600 text-white text-sm font-medium transition-colors">
@@ -157,7 +191,7 @@
       alertsEnabled = !alertsEnabled;
       const btn = document.getElementById('notif-btn');
       btn.textContent = alertsEnabled ? 'Alerts ON' : 'Alerts OFF';
-      btn.className = `px-3 py-1 rounded text-xs font-medium transition-colors ${alertsEnabled ? 'bg-green-700 hover:bg-green-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-400'}`;
+      btn.className = `px-3 py-1 rounded text-xs font-medium transition-colors ${alertsEnabled ? 'bg-green-700 hover:bg-green-600 text-white' : 'bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-500 dark:text-gray-400'}`;
     }
 
     if ('Notification' in window && Notification.permission === 'default') {
@@ -220,13 +254,13 @@
 
       if (!anyData) {
         badge.textContent = 'Loading...';
-        badge.className = 'text-xs font-semibold px-2 py-0.5 rounded-full bg-gray-700 text-gray-300';
+        badge.className = 'text-xs font-semibold px-2 py-0.5 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300';
       } else if (allHealthy) {
         badge.textContent = 'All Systems Go';
-        badge.className = 'text-xs font-semibold px-2 py-0.5 rounded-full bg-green-800 text-green-200';
+        badge.className = 'text-xs font-semibold px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-800 text-green-800 dark:text-green-200';
       } else {
         badge.textContent = 'Degraded';
-        badge.className = 'text-xs font-semibold px-2 py-0.5 rounded-full bg-red-800 text-red-200';
+        badge.className = 'text-xs font-semibold px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-800 text-red-800 dark:text-red-200';
       }
     }
 
@@ -240,9 +274,17 @@
       const { results } = state[serviceId];
       const latest = results[0];
       const isUp = latest ? latest.success : null;
-      const statusColor = isUp === null ? 'bg-gray-700' : isUp ? 'bg-green-900 border-green-700' : 'bg-red-900 border-red-700';
+      const statusColor = isUp === null
+        ? 'bg-gray-100 dark:bg-gray-800 border-gray-300 dark:border-gray-700'
+        : isUp
+          ? 'bg-green-50 dark:bg-green-900 border-green-300 dark:border-green-700'
+          : 'bg-red-50 dark:bg-red-900 border-red-300 dark:border-red-700';
       const statusText = isUp === null ? 'Unknown' : isUp ? 'UP' : 'DOWN';
-      const statusBadge = isUp === null ? 'bg-gray-600 text-gray-300' : isUp ? 'bg-green-600 text-white' : 'bg-red-600 text-white';
+      const statusBadge = isUp === null
+        ? 'bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300'
+        : isUp
+          ? 'bg-green-600 text-white'
+          : 'bg-red-600 text-white';
 
       const meta = serviceUrls[serviceId];
       const displayName = meta?.name ?? serviceId;
@@ -255,43 +297,43 @@
       }).join('');
 
       const latestDetail = latest ? `
-        <div class="mt-3 text-sm text-gray-400">
+        <div class="mt-3 text-sm text-gray-600 dark:text-gray-400">
           Last checked: ${timeAgo(latest.timestamp)} &bull;
           Duration: ${formatDuration(latest.durationMs)}
-          ${latest.error ? `&bull; <span class="text-red-400">${escapeHtml(latest.error)}</span>` : ''}
+          ${latest.error ? `&bull; <span class="text-red-500 dark:text-red-400">${escapeHtml(latest.error)}</span>` : ''}
         </div>
       ` : '';
 
       const detailsHtml = results.slice(0, 10).map((r) => `
-        <details class="border-t border-gray-700">
-          <summary class="flex items-center gap-3 px-3 py-2 hover:bg-gray-700 transition-colors">
+        <details class="border-t border-gray-200 dark:border-gray-700">
+          <summary class="flex items-center gap-3 px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
             <span class="dot ${r.success ? 'dot-success' : 'dot-error'}"></span>
-            <span class="text-xs text-gray-400 w-20 shrink-0">${timeAgo(r.timestamp)}</span>
-            <span class="text-xs ${r.success ? 'text-green-400' : 'text-red-400'} font-medium w-10 shrink-0">
+            <span class="text-xs text-gray-500 dark:text-gray-400 w-20 shrink-0">${timeAgo(r.timestamp)}</span>
+            <span class="text-xs ${r.success ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'} font-medium w-10 shrink-0">
               ${r.statusCode ?? (r.error ? 'ERR' : '?')}
             </span>
             <span class="text-xs text-gray-500 truncate">${formatDuration(r.durationMs)}</span>
-            <span class="ml-auto text-xs text-gray-600">&#9660;</span>
+            <span class="ml-auto text-xs text-gray-400 dark:text-gray-600">&#9660;</span>
           </summary>
-          <div class="px-3 py-2 bg-gray-900 text-xs font-mono overflow-auto max-h-32">
-            ${r.error ? `<div class="text-red-400">${escapeHtml(r.error)}</div>` : ''}
-            ${r.responseBody ? `<pre class="text-gray-300 whitespace-pre-wrap">${escapeHtml(r.responseBody.slice(0, 500))}</pre>` : '<div class="text-gray-500">No body captured</div>'}
+          <div class="px-3 py-2 bg-gray-50 dark:bg-gray-900 text-xs font-mono overflow-auto max-h-32">
+            ${r.error ? `<div class="text-red-500 dark:text-red-400">${escapeHtml(r.error)}</div>` : ''}
+            ${r.responseBody ? `<pre class="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">${escapeHtml(r.responseBody.slice(0, 500))}</pre>` : '<div class="text-gray-400 dark:text-gray-500">No body captured</div>'}
           </div>
         </details>
       `).join('');
 
       return `
-        <div class="rounded-xl border ${statusColor} border-opacity-50 overflow-hidden shadow-md">
+        <div class="rounded-xl border ${statusColor} border-opacity-60 overflow-hidden shadow-sm">
           <div class="px-5 py-4 flex items-center justify-between gap-4">
             <div class="min-w-0">
               <div class="flex items-center gap-2">
                 <span class="font-semibold text-lg">${escapeHtml(displayName)}</span>
                 <span class="text-xs font-bold px-2 py-0.5 rounded ${statusBadge}">${statusText}</span>
               </div>
-              <div class="text-sm text-gray-400 truncate mt-0.5 flex items-center gap-1.5">
-                <span class="text-xs font-mono font-semibold text-gray-500 shrink-0">${escapeHtml(meta?.method ?? 'GET')}</span>
+              <div class="text-sm text-gray-600 dark:text-gray-400 truncate mt-0.5 flex items-center gap-1.5">
+                <span class="text-xs font-mono font-semibold text-gray-400 dark:text-gray-500 shrink-0">${escapeHtml(meta?.method ?? 'GET')}</span>
                 <a href="${escapeHtml(displayUrl)}" target="_blank" rel="noopener noreferrer"
-                   class="hover:text-gray-200 underline underline-offset-2 decoration-gray-600 truncate">
+                   class="hover:text-gray-900 dark:hover:text-gray-200 underline underline-offset-2 decoration-gray-300 dark:decoration-gray-600 truncate">
                   ${escapeHtml(displayUrl)}
                 </a>
               </div>
@@ -302,7 +344,7 @@
                 <div>every ${meta?.intervalSeconds ?? '?'}s</div>
               </div>
               <button onclick="openModal(${serviceId})"
-                class="px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs transition-colors">
+                class="px-2 py-1 rounded bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 text-xs transition-colors">
                 Edit
               </button>
             </div>
@@ -310,12 +352,12 @@
 
           <div class="px-5 pb-3">
             <div class="flex flex-wrap gap-1">
-              ${dotsHtml || '<span class="text-gray-600 text-xs">Waiting for first check...</span>'}
+              ${dotsHtml || '<span class="text-gray-400 dark:text-gray-600 text-xs">Waiting for first check...</span>'}
             </div>
             ${latestDetail}
           </div>
 
-          ${detailsHtml ? `<div class="bg-gray-800 rounded-b-xl">${detailsHtml}</div>` : ''}
+          ${detailsHtml ? `<div class="bg-gray-100 dark:bg-gray-800 rounded-b-xl">${detailsHtml}</div>` : ''}
         </div>
       `;
     }
